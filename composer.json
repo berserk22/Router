@@ -1,0 +1,16 @@
+{
+  "name": "skeleton-app/router",
+  "description": "SkeletonApp Module Router",
+  "type": "modules",
+  "require": {
+    "php": ">=8.2",
+    "ext-apcu": "*"
+  },
+  "extra": {
+    "branch-alias": {
+      "dev-main": "dev"
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": false
+}
