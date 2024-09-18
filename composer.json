@@ -3,8 +3,7 @@
   "description": "SkeletonApp Module Router",
   "type": "modules",
   "require": {
-    "php": ">=8.2",
-    "ext-apcu": "*"
+    "php": ">=8.2"
   },
   "extra": {
     "branch-alias": {
