@@ -20,9 +20,9 @@ class Redirect {
     use RouterTrait;
 
     /**
-     * @var Collection|null
+     * @var \Illuminate\Database\Eloquent\Model|null
      */
-    private null|Collection $redirect = null;
+    private null|\Illuminate\Database\Eloquent\Model $redirect = null;
 
     /**
      * @var bool

@@ -26,15 +26,23 @@ class GetUrl extends AbstractPlugin {
         if (empty($obj)) {
             $obj = [];
         }
-        if (isset($routers[$type])){
-            if(str_contains($routers[$type][0]['route'], '{')){
-                preg_match('/{([^*]+)}/', $routers[$type][0]['route'], $match);
-                $tmp_key = explode(':', $match[1])[0];
-                return str_replace($match[0], $obj[$tmp_key], $routers[$type][0]['route']);
+        if (isset($routers[$type])) {
+            $route = $routers[$type][0]['route'];
+            // Überprüfen, ob Platzhalter wie `{parameter:regex}` vorhanden sind
+            if (str_contains($route, '{')) {
+                // Ersetze die Platzhalter in einem Schritt
+                $route = preg_replace_callback(
+                    "/{(\w+):[^\}]+}/",
+                    function ($matches) use ($obj) {
+                        // `$matches[1]` enthält den Namen des Platzhalters, z.B. `carInfo`
+                        $paramName = $matches[1];
+                        return $obj[$paramName] ?? $matches[0]; // Ersetze durch Wert aus `$obj` oder behalte Platzhalter bei
+                    },
+                    $route
+                );
             }
-            else {
-                return $routers[$type][0]['route'];
-            }
+
+            return $route;
         }
         else {
             return $this->getApp()->getRouteCollector()->getRouteParser()->urlFor($type, $obj);
