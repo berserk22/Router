@@ -81,7 +81,8 @@ class Router {
                     return $request;
                 }
                 else {
-                    return $auth->setResponseMessage($check->getMessage());
+                    $auth->setResponseMessage($check->getMessage());
+                    return false;
                 }
             },
             'error' => function (Request $request, Response $response, Auth $auth) {
