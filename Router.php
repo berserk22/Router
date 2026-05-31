@@ -7,23 +7,18 @@
 
 namespace Modules\Router;
 
-use Core\Exception;
 use DI\DependencyException;
 use DI\NotFoundException;
 use Modules\Blog\Manager\BlogManager;
-use Modules\Database\Tracy\Panel;
-use Modules\I18n\Manager\I18nManager;
 use Modules\Main\Manager\MainManager;
-use Modules\Product\Manager\ProductManager;
-use Modules\Project\Manager\ProjectManager;
 use Modules\Rest\Auth\Auth;
 use Modules\Rest\Auth\AuthCheck;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use Slim\Exception\HttpNotFoundException;
+use Slim\Psr7\Response;
+use Psr\Http\Server\RequestHandlerInterface;
 use Slim\Routing\RouteRunner;
-use Slim\Http\ServerRequest as Request;
-use Slim\Http\Response;
-use Tracy\Debugger;
 
 class Router {
 
@@ -35,28 +30,20 @@ class Router {
     protected string $path = "";
 
     /**
-     * @var string
+     * @var RequestHandlerInterface
      */
-    private string $productManagerEntity = "Product\Manager";
+    private RequestHandlerInterface $handler;
 
     /**
-     * @var string
-     */
-    private string $mainManagerEntity = 'Main\Manager';
-
-    /**
-     * @var string
-     */
-    private string $blogManagerEntity = 'Blog\Manager';
-
-    /**
-     * @param Request $request
-     * @param RouteRunner $runner
+     * @param ServerRequestInterface $request
+     * @param RouteRunner $handler
      * @return ResponseInterface
      * @throws DependencyException
      * @throws NotFoundException
      */
-    public function __invoke(Request $request, RouteRunner $runner): ResponseInterface {
+    public function __invoke(ServerRequestInterface $request, RouteRunner $handler): ResponseInterface {
+        $this->handler = $handler;
+
         $this->path = $request->getUri()->getPath();
 
         $tmpRedirect = $this->checkRedirecting();
@@ -74,7 +61,7 @@ class Router {
             'path' => '/api/',
             'passthrough' => '/api/v1/oauth',
             'header'=>'Authorization',
-            'authenticator' => function (Request $request, Auth $auth) {
+            'authenticator' => function (ServerRequestInterface $request, Auth $auth) {
                 $token = $auth->getToken($request);
                 $check = new AuthCheck($this);
                 if ($check->valid($token)) {
@@ -85,13 +72,17 @@ class Router {
                     return false;
                 }
             },
-            'error' => function (Request $request, Response $response, Auth $auth) {
+            'error' => function (ServerRequestInterface $request, Response $response, Auth $auth) {
                 $output = [
                     'success' => false,
                     'error' => $auth->getResponseMessage(),
                     'code' => 401,
                 ];
-                return $response->withJson($output, 401);
+                $payload = json_encode($output, JSON_UNESCAPED_UNICODE);
+                $response->getBody()->write($payload);
+                return $response
+                    ->withHeader('Content-Type', 'application/json')
+                    ->withStatus(401);
             }
         ]);
 
@@ -105,16 +96,17 @@ class Router {
             return $tmpRoute;
         }
 
+        // return $handler->handle($request);
         throw new HttpNotFoundException($request);
     }
 
     /**
-     * @param Request $request
+     * @param ServerRequestInterface $request
      * @return Response|null
      * @throws DependencyException
      * @throws NotFoundException
      */
-    protected function getApcuRoute(Request $request): Response|null {
+    protected function getApcuRoute(ServerRequestInterface $request): Response|null {
         $routers = $this->getApcuCache()->get('routers');
         foreach ($routers as $route) {
             foreach ($route as $item) {
@@ -142,12 +134,12 @@ class Router {
     }
 
     /**
-     * @param Request $request
+     * @param ServerRequestInterface $request
      * @param bool $api
      * @param $apiAuthController
      * @return Response|ResponseInterface|null
      */
-    protected function getRoute(Request $request, bool $api, $apiAuthController): Response|ResponseInterface|null {
+    protected function getRoute(ServerRequestInterface $request, bool $api, $apiAuthController): Response|ResponseInterface|null {
         $routers = $this->getApp()->getRouteCollector()->getRoutes();
         foreach ($routers as $route) {
             if ((bool)preg_match($this->getRegex($route->getPattern()), $this->path, $match) && $this->checkURL($this->path, $match)){
@@ -161,14 +153,14 @@ class Router {
     }
 
     /**
-     * @param Request $request
+     * @param ServerRequestInterface $request
      * @param array $match
      * @param bool $api
      * @param $apiAuthController
      * @param $route
      * @return Response|ResponseInterface|null
      */
-    protected function getRouteResponse(Request $request, array $match, bool $api, $apiAuthController, $route): Response|ResponseInterface|null {
+    protected function getRouteResponse(ServerRequestInterface $request, array $match, bool $api, $apiAuthController, $route): Response|ResponseInterface|null {
         $check = true;
         foreach ($match as $item => $value) {
             if (!is_numeric($item)){
@@ -213,12 +205,53 @@ class Router {
     }
 
     /**
+     * @param string $value
+     * @return bool
+     * @throws DependencyException
+     * @throws NotFoundException
+     */
+    protected function checkPage(string $value): bool {
+        if (!$this->getContainer()->has('Main\Manager')) {
+            return false;
+        }
+        /** @var MainManager $manager */
+        $manager = $this->getContainer()->get('Main\Manager');
+        return !is_null($manager->getPageEntity()::where('name', '=', $value)->first());
+    }
+
+    /**
+     * @param string $value
+     * @return bool
+     * @throws DependencyException
+     * @throws NotFoundException
+     */
+    protected function checkPost(string $value): bool {
+        if (!$this->getContainer()->has('Blog\Manager')) {
+            return false;
+        }
+        /** @var BlogManager $manager */
+        $manager = $this->getContainer()->get('Blog\Manager');
+        return !is_null($manager->getBlogEntity()::where('name', '=', $value)->first());
+    }
+
+    /**
      * @param string $pattern
      * @param string $delimiter
      * @return string
      */
     protected function getRegex(string $pattern, string $delimiter = '/'): string {
-        return $delimiter.str_replace(['{', ':', '}', '/'], ['(?<', '>', ')', '\/'], $pattern).$delimiter;
+        return '#^' . preg_replace_callback($delimiter.'{(\w+):(\w+)}'.$delimiter, function ($matches) {
+                $patterns = [
+                    'UUID' => '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}',
+                    'int' => '[0-9]+',
+                    'slug' => '[a-zA-Z0-9-/_]+',
+                    'any' => '[^/]+',
+                ];
+                $name = $matches[1];
+                $type = $matches[2];
+                $regex = $patterns[$type] ?? $patterns['any'];
+                return '(?<' . $name . '>' . $regex . ')';
+            }, $pattern) . '$#';
     }
 
     /**
@@ -238,11 +271,11 @@ class Router {
     }
 
     /**
-     * @param Request $request
+     * @param ServerRequestInterface $request
      * @param array $attribute
      * @return mixed
      */
-    protected function setAttributes(Request $request, array $attribute): Request {
+    protected function setAttributes(ServerRequestInterface $request, array $attribute): ServerRequestInterface {
         foreach ($attribute as $key => $value) {
             if (!is_numeric($key)) {
                 $request = $request->withAttribute($key, $value);
@@ -252,198 +285,17 @@ class Router {
     }
 
     /**
-     * @param Request $request
+     * @param ServerRequestInterface $request
      * @param array $methods
-     * @return Request
+     * @return ServerRequestInterface
      */
-    protected function setMethods(Request $request, array $methods): Request {
+    protected function setMethods(ServerRequestInterface $request, array $methods): ServerRequestInterface {
         if (!empty($methods)){
             foreach ($methods as $method) {
                 $request = $request->withMethod($method);
             }
         }
         return $request;
-    }
-
-
-    /**
-     * @param string $page
-     * @return bool
-     * @throws DependencyException
-     * @throws NotFoundException
-     */
-    protected function checkPage(string $page): bool {
-        if ($this->getContainer()->has($this->mainManagerEntity)){
-            /** @var MainManager $mainManager */
-            $mainManager = $this->getContainer()->get($this->mainManagerEntity);
-            $page_check = $mainManager->getPageEntity()::where('name', '=', $page)->first();
-            if (!is_null($page_check)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * @param string $lang
-     * @return bool
-     * @throws DependencyException
-     * @throws NotFoundException
-     */
-    protected function checkLang(string $lang): bool {
-        if ($this->getContainer()->has('I18n\Manager')){
-            /** @var I18nManager $i18nManager */
-            $i18nManager = $this->getContainer()->get('I18n\Manager');
-            $lang_check = $i18nManager->getLanguageEntity()::where([
-                ['code', '=', $lang],
-                ['active', '=', 1]
-            ])->first();
-            if (!is_null($lang_check)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * @param string $post
-     * @return bool
-     * @throws DependencyException
-     * @throws NotFoundException
-     */
-    protected function checkPost(string $post): bool {
-        if ($this->getContainer()->has($this->blogManagerEntity)){
-            /** @var BlogManager $blogManager */
-            $blogManager = $this->getContainer()->get($this->blogManagerEntity);
-            $post_check = $blogManager->getBlogEntity()::where([
-                ['name', '=', $post],
-                ['status', '=', 'publish']
-            ])->first();
-            if (!is_null($post_check)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * @param int|string $vendorNumber
-     * @return bool
-     * @throws DependencyException
-     * @throws NotFoundException
-     */
-    protected function checkVendorNumber(int|string $vendorNumber): bool {
-        if ($this->getContainer()->has($this->productManagerEntity)){
-            /** @var ProductManager $productManager */
-            $productManager = $this->getContainer()->get($this->productManagerEntity);
-            $vendorNumbercheck = $productManager->getProductEntity()::where('vendor_number', '=', $vendorNumber)->first();
-            if (!is_null($vendorNumbercheck)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * @param string $category
-     * @return bool
-     * @throws DependencyException
-     * @throws NotFoundException
-     */
-    protected function checkCategory(string $category): bool {
-        if ($this->getContainer()->has($this->productManagerEntity)){
-            /** @var ProductManager $productManager */
-            $productManager = $this->getContainer()->get($this->productManagerEntity);
-            $category_check = $productManager->getCategoryEntity()::where('name', '=', $category)->first();
-            if (!is_null($category_check)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * @param string $manufacturer
-     * @return bool
-     * @throws DependencyException
-     * @throws NotFoundException
-     */
-    protected function checkManufacturer(string $manufacturer): bool {
-        if ($this->getContainer()->has($this->productManagerEntity)){
-            /** @var ProductManager $productManager */
-            $productManager = $this->getContainer()->get($this->productManagerEntity);
-            $manufacturer_check = $productManager->getManufacturerEntity()::where('name', '=', $manufacturer)->first();
-            if (!is_null($manufacturer_check)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * @param string $group
-     * @return bool
-     * @throws DependencyException
-     * @throws NotFoundException
-     */
-    protected function checkGroup(string $group): bool {
-        if ($this->getContainer()->has($this->productManagerEntity)){
-            /** @var ProductManager $productManager */
-            $productManager = $this->getContainer()->get($this->productManagerEntity);
-            $group_check = $productManager->getAttributeGroupEntity()::where('name', '=', $group)->first();
-            if (!is_null($group_check)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * @throws DependencyException
-     * @throws NotFoundException
-     */
-    protected function checkPageId(int $page_id): bool {
-        if ($this->getContainer()->has($this->mainManagerEntity)){
-            /** @var MainManager $mainManager */
-            $mainManager = $this->getContainer()->get($this->mainManagerEntity);
-            $page_check = $mainManager->getPageEntity()::find($page_id);
-            if (!is_null($page_check)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * @throws DependencyException
-     * @throws NotFoundException
-     */
-    protected function checkPostId(int $post_id): bool {
-        if ($this->getContainer()->has($this->blogManagerEntity)){
-            /** @var BlogManager $blogManager */
-            $blogManager = $this->getContainer()->get($this->blogManagerEntity);
-            $post_check = $blogManager->getBlogEntity()::find($post_id);
-            if (!is_null($post_check)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * @throws DependencyException
-     * @throws NotFoundException
-     */
-    protected function checkProjectId(int $project_id): bool {
-        if ($this->getContainer()->has('Project\Manager')){
-            /** @var ProjectManager $projectManager */
-            $projectManager = $this->getContainer()->get('Project\Manager');
-            $project_check = $projectManager->getProjectEntity()::find($project_id);
-            if (!is_null($project_check)) {
-                return true;
-            }
-        }
-        return false;
     }
 
 }

@@ -11,6 +11,9 @@ use Modules\Database\Model;
 
 class Redirect extends Model {
 
+    /**
+     * @var string
+     */
     protected $table = "redirect";
 
 }

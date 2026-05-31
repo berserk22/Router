@@ -21,7 +21,7 @@ class GetUrl extends AbstractPlugin {
      * @throws DependencyException
      * @throws NotFoundException
      */
-    public function process(string $type, array|string $obj = null): string {
+    public function process(string $type, array|string|null $obj = null): string {
         $routers = $this->getApcuCache()->get('routers');
         if (empty($obj)) {
             $obj = [];

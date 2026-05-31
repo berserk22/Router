@@ -9,20 +9,18 @@ namespace Modules\Router;
 
 use DI\DependencyException;
 use DI\NotFoundException;
-use Illuminate\Database\Eloquent\Collection;
-use JetBrains\PhpStorm\NoReturn;
-use Modules\Database\Model;
+use Illuminate\Database\Eloquent\Model;
 use Psr\Http\Message\ResponseInterface;
-use Slim\Http\Response;
+use Slim\Psr7\Response;
 
 class Redirect {
 
     use RouterTrait;
 
     /**
-     * @var \Illuminate\Database\Eloquent\Model|null
+     * @var Model|null
      */
-    private null|\Illuminate\Database\Eloquent\Model $redirect = null;
+    private null|Model $redirect = null;
 
     /**
      * @var bool
@@ -54,7 +52,8 @@ class Redirect {
      * @return Response
      */
     public function redirect(Response|ResponseInterface $response): Response {
-        return $response->withRedirect($this->redirect->to, $this->redirect->code);
+        return $response->withHeader('Location', $this->redirect->to)
+            ->withStatus($this->redirect->code);
     }
 
     /**

@@ -11,6 +11,9 @@ use Modules\Database\Model;
 
 class Routers extends Model {
 
+    /**
+     * @var string
+     */
     protected $table = "routers";
 
     /**
@@ -34,7 +37,7 @@ class Routers extends Model {
     }
 
     /**
-     *
+     * @return array
      */
     public function getAttr(): array {
         if (is_array($this->attr)) {

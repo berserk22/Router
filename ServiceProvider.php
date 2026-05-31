@@ -36,15 +36,19 @@ class ServiceProvider extends Provider {
     public function beforeInit(): void {
         $container = $this->getContainer();
         if (!$container->has($this->methods)){
-            $container->set($this->methods, function(){
-                return new Methods($this);
-            });
+            $container->set($this->methods, new Methods($this));
+        }
+
+        if (!$container->has('Router\Manager')){
+            $container->set('Router\Manager', (new RouterManager($this))->initEntity());
         }
 
         if (!$container->has('Router\Redirect')){
-            $container->set('Router\Redirect', function(){
-                return new Redirect($this);
-            });
+            $container->set('Router\Redirect', new Redirect($this));
+        }
+
+        if (!$container->has("MiddlewareFactory")){
+            $container->set('MiddlewareFactory', new MiddlewareFactory($this));
         }
     }
 
@@ -67,11 +71,9 @@ class ServiceProvider extends Provider {
         }
 
         if (!$container->has('Router\ApcuCache')) {
-            $container->set('Router\ApcuCache', function (){
-                $cache = new ApcuCache($this);
-                $cache->init();
-                return $cache;
-            });
+            $cache = new ApcuCache($this);
+            $cache->init();
+            $container->set('Router\ApcuCache', $cache);
         }
     }
 
@@ -85,13 +87,6 @@ class ServiceProvider extends Provider {
         if ($container->has('Modules\Database\ServiceProvider::Migration::Collection')) {
             /* @var $databaseMigration MigrationCollection  */
             $container->get('Modules\Database\ServiceProvider::Migration::Collection')->add(new Schema($this));
-        }
-
-        if (!$container->has('Router\Manager')){
-            $this->getContainer()->set('Router\Manager', function(){
-                $manager = new RouterManager($this);
-                return $manager->initEntity();
-            });
         }
     }
 

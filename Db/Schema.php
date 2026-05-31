@@ -57,12 +57,13 @@ class Schema extends Migration {
      * @throws NotFoundException
      */
     public function delete(): void {
-        if ($this->schema()->hasTable('routers')) {
-            $this->schema()->drop('routers');
+        // Drop tables in reverse order to handle foreign key constraints
+        if ($this->schema()->hasTable('redirect')) {
+            $this->schema()->drop('redirect');
         }
 
-        if ($this->schema("main")->hasTable('redirect')) {
-            $this->schema("main")->drop('redirect');
+        if ($this->schema()->hasTable('routers')) {
+            $this->schema()->drop('routers');
         }
     }
 }

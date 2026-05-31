@@ -10,8 +10,6 @@ namespace Modules\Router\Manager;
 use Core\Traits\App;
 use DI\DependencyException;
 use DI\NotFoundException;
-use Modules\Router\Db\Models\Redirect;
-use Modules\Router\Db\Models\Routers;
 
 class RouterManager {
 
@@ -32,15 +30,11 @@ class RouterManager {
      */
     public function initEntity(): static {
         if (!$this->getContainer()->has($this->routers)){
-            $this->getContainer()->set($this->routers, function(){
-                return 'Modules\Router\Db\Models\Routers';
-            });
+            $this->getContainer()->set($this->routers, 'Modules\Router\Db\Models\Routers');
         }
 
         if (!$this->getContainer()->has($this->redirect)){
-            $this->getContainer()->set($this->redirect, function(){
-                return 'Modules\Router\Db\Models\Redirect';
-            });
+            $this->getContainer()->set($this->redirect, 'Modules\Router\Db\Models\Redirect');
         }
         return $this;
     }

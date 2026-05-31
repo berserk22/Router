@@ -14,15 +14,15 @@ class Methods implements \Iterator {
 
     use RouterTrait;
 
-    const TYPE = 'type';
+    const string TYPE = 'type';
 
-    const INSTANCE = 'instance';
+    const string INSTANCE = 'instance';
 
-    const METHOD = 'method';
+    const string METHOD = 'method';
 
-    const ROUTING = 'routing';
+    const string ROUTING = 'routing';
 
-    const GROUPS = 'groups';
+    const string GROUPS = 'groups';
 
     /**
      * @var array
@@ -121,18 +121,25 @@ class Methods implements \Iterator {
 
     /**
      * @return void
+     * @throws DependencyException
+     * @throws NotFoundException
      */
     public function registry(): void {
         $this->resortingMethods();
-        foreach ($this->options[self::ROUTING] as $route) {
-            $this->getContainer()->set($route['instance'], function () use($route) {
-                $class = $route['instance'];
-                return new $class($this);
-            });
-        }
 
-        foreach ($this->options[self::GROUPS] as $group) {
-            $this->getApp()->group($group['method'], $group['instance']);
+        foreach ($this->options[self::ROUTING] as $route) {
+            $class = $route['instance'];
+            if (!class_exists($class)) {
+                throw new \InvalidArgumentException(
+                    sprintf('Router class "%s" does not exist.', $class)
+                );
+            }
+            $this->getContainer()->set($class, new $class($this));
+        }
+        $dbGroups = $this->getAllGroups();
+        foreach ($this->options[self::GROUPS] as $type => $group) {
+            $url = isset($dbGroups[$type]) ? $dbGroups[$type]['method'] : $group['method'];
+            $this->getApp()->group($url, $group['instance']);
         }
     }
 
